@@ -1,6 +1,6 @@
 {
   "name": "vishal-bomber-wrapper",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "main": "api_server.js",
   "scripts": {
     "start": "node api_server.js"
@@ -8,7 +8,8 @@
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
-    "puppeteer": "^22.0.0"
+    "puppeteer-core": "^22.0.0",
+    "@sparticuz/chromium": "^123.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
