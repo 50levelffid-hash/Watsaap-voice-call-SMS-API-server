@@ -1,16 +1,29 @@
 {
-  "name": "vishal-bomber-wrapper",
-  "version": "3.0.0",
+  "name": "otp-bombing-api-server",
+  "version": "1.0.0",
+  "description": "OTP Bombing API Server - Merged ALL APIs with /stats endpoint",
   "main": "bomber_server.js",
   "scripts": {
-    "start": "node bomber_server.js"
+    "start": "node bomber_server.js",
+    "dev": "nodemon bomber_server.js"
   },
+  "keywords": [
+    "api",
+    "otp",
+    "bombing",
+    "sms",
+    "whatsapp",
+    "call"
+  ],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
+    "axios": "^1.6.7",
     "cors": "^2.8.5",
-    "puppeteer-core": "^22.0.0",
-    "@sparticuz/chromium": "^123.0.0",
-    "axios": "^1.6.0"
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
   },
   "engines": {
     "node": ">=18.0.0"
